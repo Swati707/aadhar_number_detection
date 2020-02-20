@@ -5,6 +5,7 @@ import imutils
 import argparse
 from perspectiveTransform import *
 from skimage.filters import threshold_local
+
 # construct the argument parser and parse the arguments
 ap = argparse.ArgumentParser()
 ap.add_argument("-i", "--image", required=True, help="path to the image to be localised")
@@ -15,19 +16,23 @@ image = cv2.imread(args["image"])
 # if the width is greater than 640 pixels, then resize the image
 if image.shape[1] > 640:
 	image = imutils.resize(image, width=640)
+	
 gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 gray = cv2.GaussianBlur(gray, (3, 3), 0)
+
 edged = cv2.Canny(gray, 0, 50)
 edgedi = cv2.bitwise_not(edged)
 edgedi = cv2.GaussianBlur(edgedi, (5, 5), 0)
 edgedi = cv2.erode(edgedi, None, iterations=3)
 edgedit = cv2.threshold(edgedi, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
+
 # show the original image and the edge detected image
 #edgedit = cv2.bitwise_not(edgedit)
 print("STEP 1: Edge Detection")
 #cv2.imshow("Edged", edgedit)
+
 output = np.copy(image)
-im2,contours,hierarchy = cv2.findContours(edgedit, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+im2, contours, hierarchy = cv2.findContours(edgedit, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 print(len(contours))
 if len(contours) != 0:
     # draw in blue the contours that were founded
@@ -71,29 +76,22 @@ gradX = np.absolute(gradX)
 (minVal, maxVal) = (np.min(gradX), np.max(gradX))
 gradX = (255 * ((gradX - minVal) / (maxVal - minVal))).astype("uint8")
 
-#cv2.imshow("gradX", gradX)
-#cv2.waitKey(0)
-
 # blur the gradient representation, apply a closing operation, and threshold the
 # image using Otsu's method
 gradX = cv2.GaussianBlur(gradX, (3, 3), 0)
 cv2.imshow("gradXgb", gradX)
 
-
-#gradX = cv2.erode(gradX, None, iterations=2)
-#cv2.imshow("erode", gradX)
-
 gradX = cv2.morphologyEx(gradX, cv2.MORPH_CLOSE, rectKernel)
 thresh = cv2.threshold(gradX, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
 
-cv2.imshow("gradXMorph", gradX)
+cv2.imshow("gradXClosed", gradX)
 cv2.imshow("thresh", thresh)
 cv2.waitKey(0)
 
 # perform a series of erosions and dilations on the image
 thresh = cv2.dilate(thresh, None, iterations=4)
 thresh = cv2.erode(thresh, None, iterations=1)
-cv2.imshow("dilate", thresh)
+cv2.imshow("dilate_erode", thresh)
 cv2.waitKey(0)
 
 thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, rectKernel)
@@ -116,8 +114,6 @@ def draw_contour(image, c, i):
     # return the image with the contour number drawn on it
     return image
 
-orig = image.copy()
-
 def sort_contours(cnts, method="bottom-to-top"):
     # initialize the reverse flag and sort index
     reverse = False
@@ -139,11 +135,14 @@ def sort_contours(cnts, method="bottom-to-top"):
 
 (cnts, boundingBoxes) = sort_contours(contours)
 
+orig = image.copy()
 for (i, c) in enumerate(cnts):
     draw_contour(orig, c, i)
+
 # show the output image
 cv2.imshow("Sorted", orig)
 cv2.waitKey(0)
+
 regions = []
 for c in cnts[:3]:
     # grab the bounding box associated with the contour and compute the area and
