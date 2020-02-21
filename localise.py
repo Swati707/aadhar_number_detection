@@ -5,6 +5,8 @@ import imutils
 import argparse
 from perspectiveTransform import *
 from skimage.filters import threshold_local
+import pytesseract
+import re
 
 # construct the argument parser and parse the arguments
 ap = argparse.ArgumentParser()
@@ -46,15 +48,15 @@ if len(contours) != 0:
     # draw the biggest contour (c) in green
     cv2.rectangle(output,(x,y),(x+w,y+h+3),(0,0,255),3)
 
-cv2.imshow("Edged", output)
-cv2.waitKey(0)
+#cv2.imshow("Edged", output)
+#cv2.waitKey(0)
 
 crop_img = image[y:y+h, x:x+w]
-cv2.imshow("Crop", crop_img)
+#cv2.imshow("Crop", crop_img)
 #cv2.waitKey(0)
 
 image = crop_img
-rectKernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 9))
+rectKernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 4))
 squareKernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
 regions = []
 
@@ -82,21 +84,26 @@ gradX = cv2.GaussianBlur(gradX, (3, 3), 0)
 cv2.imshow("gradXgb", gradX)
 
 gradX = cv2.morphologyEx(gradX, cv2.MORPH_CLOSE, rectKernel)
+cv2.imshow("gradXgbc", gradX)
+0
+
 thresh = cv2.threshold(gradX, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
 
-cv2.imshow("gradXClosed", gradX)
+#cv2.imshow("gradXClosed", gradX)
 cv2.imshow("thresh", thresh)
-cv2.waitKey(0)
+#cv2.waitKey(0)
 
 # perform a series of erosions and dilations on the image
 thresh = cv2.dilate(thresh, None, iterations=4)
+cv2.imshow("dilate_", thresh)
+
 thresh = cv2.erode(thresh, None, iterations=1)
-cv2.imshow("dilate_erode", thresh)
-cv2.waitKey(0)
+cv2.imshow("erode", thresh)
+#cv2.waitKey(0)
 
 thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, rectKernel)
-cv2.imshow("threshOpen", thresh)
-cv2.waitKey(0)
+#cv2.imshow("threshOpen", thresh)
+#cv2.waitKey(0)
 
 contours = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -143,6 +150,7 @@ for (i, c) in enumerate(cnts):
 cv2.imshow("Sorted", orig)
 cv2.waitKey(0)
 
+ 
 regions = []
 for c in cnts[:3]:
     # grab the bounding box associated with the contour and compute the area and
@@ -161,15 +169,46 @@ for c in cnts[:3]:
     print(aspectRatio, extent)
     # ensure the aspect ratio, width, and height of the bounding box fall within
     # tolerable limits, then update the list of license plate regions
-    if (aspectRatio > 5 and aspectRatio < 10) and extent > 0.65:
+    if (aspectRatio > 5 and aspectRatio < 10.5) and extent > 0.65:
         regions.append(box)
+        req_rect = rect
 
 potential_detection = image.copy()
+
+lpBoxs = []
 
 for lpBox in regions:
     lpBox = np.array(lpBox).reshape((-1,1,2)).astype(np.int32)
     cv2.drawContours(potential_detection, [lpBox], -1, (0, 255, 0), 2)
-
+    lpBoxs.append(lpBox)
+    print(lpBox)
 # display the output image
-cv2.imshow("image", potential_detection)
+for lpBox in lpBoxs:
+    p1 = (lpBox[0][0][0],lpBox[0][0][1])
+    p2 = (lpBox[1][0][0],lpBox[1][0][1])
+    p3 = (lpBox[2][0][0],lpBox[2][0][1])
+    p4 = (lpBox[3][0][0],lpBox[3][0][1])
+    pts = np.array([p1,p2,p3,p4])
+    #print(p1,p2,p3,p4)
+    #print(pts)
+    pt_image = image.copy()
+    pt_image = four_point_transform(pt_image, pts)
+    
+    #if pt_image.shape[1] > :
+    #pt_image = imutils.resize(pt_image, width=150)
+
+    print(pt_image.shape)
+    config = ('-l eng --oem 1 --psm 7')
+    text = pytesseract.image_to_string(pt_image, config=config)
+    
+    nums = sum(c.isdigit() for c in text)
+    spaces = sum(c.isspace() for c in text)
+    print(nums,spaces)
+    if nums == 12 and spaces == 2:
+        result = ''.join(ch for ch in text if ch.isdigit())
+        print(result)
+        cv2.imshow("pt_image", pt_image)
+        cv2.imshow("image", potential_detection)
+
 cv2.waitKey(0)
+
